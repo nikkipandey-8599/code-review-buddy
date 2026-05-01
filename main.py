@@ -33,112 +33,194 @@ def verify_signature(payload_bytes: bytes, signature_header: str) -> bool:
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
+    total = len(reviews_log)
+    repos = len(set(r['repo'] for r in reviews_log)) if reviews_log else 0
+    prs = len(set(r['pr_number'] for r in reviews_log)) if reviews_log else 0
+
     cards = ""
     if not reviews_log:
-        cards = """
-        <div class="empty">
-            <p>No reviews yet.</p>
-            <p>Open a Pull Request on a repo where your bot is installed.</p>
-        </div>
-        """
+        cards = '<div class="empty-state"><div class="empty-icon">⏳</div><h3>Waiting for first review</h3><p>Install the bot on a repo and open a Pull Request to get started.</p></div>'
     else:
         for r in reversed(reviews_log):
-            review_html = r['review'].replace('\n', '<br>')
+            review_escaped = r['review'].replace('<','&lt;').replace('>','&gt;').replace('\n','<br>')
             cards += f"""
-            <div class="card">
-                <div class="card-header">
-                    <span class="repo">{r['repo']}</span>
-                    <span class="pr">PR #{r['pr_number']}</span>
-                    <span class="time">{r['time']}</span>
+            <div class="review-card">
+                <div class="review-header">
+                    <div class="review-meta">
+                        <span class="repo-icon">📁</span>
+                        <a class="repo-name" href="https://github.com/{r['repo']}" target="_blank">{r['repo']}</a>
+                        <span class="divider">·</span>
+                        <a class="pr-link" href="{r['pr_url']}" target="_blank">PR #{r['pr_number']}</a>
+                    </div>
+                    <span class="review-time">{r['time']}</span>
                 </div>
-                <div class="card-body">{review_html}</div>
-                <a href="{r['pr_url']}" target="_blank" class="view-btn">View on GitHub →</a>
-            </div>
-            """
+                <div class="review-body">{review_escaped}</div>
+                <div class="review-footer">
+                    <span class="ai-badge">✨ Gemini AI</span>
+                    <a href="{r['pr_url']}" target="_blank" class="view-pr">View PR on GitHub →</a>
+                </div>
+            </div>"""
 
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Code Review Buddy</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }}
-            
-            header {{ background: #161b22; border-bottom: 1px solid #30363d; padding: 1rem 2rem; display: flex; align-items: center; gap: 12px; }}
-            header h1 {{ font-size: 1.2rem; font-weight: 600; color: #f0f6fc; }}
-            .badge {{ background: #238636; color: white; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }}
-            .count {{ margin-left: auto; font-size: 13px; color: #8b949e; }}
-            
-            .container {{ max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }}
-            
-            .stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }}
-            .stat {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; text-align: center; }}
-            .stat-number {{ font-size: 2rem; font-weight: 700; color: #58a6ff; }}
-            .stat-label {{ font-size: 12px; color: #8b949e; margin-top: 4px; }}
-            
-            .section-title {{ font-size: 14px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1rem; }}
-            
-            .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px; margin-bottom: 1rem; overflow: hidden; }}
-            .card-header {{ padding: 0.9rem 1.2rem; background: #1c2128; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }}
-            .repo {{ font-weight: 600; color: #58a6ff; font-size: 14px; }}
-            .pr {{ background: #1f4b8e; color: #79c0ff; font-size: 12px; padding: 2px 8px; border-radius: 12px; }}
-            .time {{ margin-left: auto; font-size: 12px; color: #8b949e; }}
-            .card-body {{ padding: 1.2rem; font-size: 13px; line-height: 1.7; color: #c9d1d9; max-height: 300px; overflow-y: auto; }}
-            .view-btn {{ display: block; padding: 0.7rem 1.2rem; background: #21262d; color: #58a6ff; text-decoration: none; font-size: 13px; border-top: 1px solid #30363d; transition: background 0.15s; }}
-            .view-btn:hover {{ background: #30363d; }}
-            
-            .empty {{ text-align: center; padding: 4rem 2rem; color: #8b949e; background: #161b22; border: 1px dashed #30363d; border-radius: 10px; }}
-            .empty p {{ margin-bottom: 8px; }}
-            
-            .status-bar {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 0.8rem 1.2rem; margin-bottom: 2rem; display: flex; align-items: center; gap: 8px; font-size: 13px; }}
-            .dot {{ width: 8px; height: 8px; border-radius: 50%; background: #3fb950; animation: pulse 2s infinite; }}
-            @keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.4; }} }}
-            
-            footer {{ text-align: center; padding: 2rem; font-size: 12px; color: #484f58; }}
-        </style>
-        <meta http-equiv="refresh" content="30">
-    </head>
-    <body>
-        <header>
-            <span style="font-size:1.4rem">🤖</span>
-            <h1>Code Review Buddy</h1>
-            <span class="badge">Live</span>
-            <span class="count">{len(reviews_log)} reviews posted</span>
-        </header>
-        
-        <div class="container">
-            <div class="status-bar">
-                <div class="dot"></div>
-                <span>Bot is online and listening for Pull Requests</span>
-                <span style="margin-left:auto;color:#8b949e">Auto-refreshes every 30s</span>
-            </div>
-            
-            <div class="stats">
-                <div class="stat">
-                    <div class="stat-number">{len(reviews_log)}</div>
-                    <div class="stat-label">Total Reviews</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-number">{len(set(r['repo'] for r in reviews_log)) if reviews_log else 0}</div>
-                    <div class="stat-label">Repos Reviewed</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-number">{len(set(r['pr_number'] for r in reviews_log)) if reviews_log else 0}</div>
-                    <div class="stat-label">PRs Reviewed</div>
-                </div>
-            </div>
-            
-            <p class="section-title">Recent Reviews</p>
-            {cards}
-        </div>
-        
-        <footer>Code Review Buddy — Built with FastAPI + Gemini AI</footer>
-    </body>
-    </html>
-    """
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Review Buddy</title>
+<meta http-equiv="refresh" content="30">
+<style>
+  :root {{
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --border2: #353548;
+    --text: #e8e8f0;
+    --text2: #9090a8;
+    --text3: #606078;
+    --blue: #6366f1;
+    --blue-light: #818cf8;
+    --green: #22c55e;
+    --green-dim: #166534;
+  }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family: 'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }}
+
+  /* NAV */
+  nav {{ background:var(--surface); border-bottom:1px solid var(--border); padding:0 2rem; height:56px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:10; }}
+  .nav-logo {{ font-size:1.3rem; }}
+  .nav-title {{ font-weight:700; font-size:1rem; color:var(--text); letter-spacing:-0.3px; }}
+  .nav-version {{ font-size:11px; color:var(--text3); background:var(--surface2); border:1px solid var(--border); padding:2px 8px; border-radius:20px; }}
+  .nav-status {{ margin-left:auto; display:flex; align-items:center; gap:6px; font-size:12px; color:var(--green); }}
+  .pulse {{ width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }}
+  @keyframes pulse {{ 0%,100%{{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,0.4);}} 50%{{opacity:0.8;box-shadow:0 0 0 4px rgba(34,197,94,0);}} }}
+
+  /* LAYOUT */
+  .page {{ max-width:1000px; margin:0 auto; padding:2rem 1.5rem; }}
+
+  /* HERO */
+  .hero {{ margin-bottom:2rem; }}
+  .hero h2 {{ font-size:1.5rem; font-weight:700; color:var(--text); letter-spacing:-0.5px; margin-bottom:6px; }}
+  .hero p {{ font-size:14px; color:var(--text2); }}
+
+  /* STATS */
+  .stats {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:2rem; }}
+  .stat-card {{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1.2rem 1.4rem; position:relative; overflow:hidden; }}
+  .stat-card::before {{ content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, var(--blue), var(--blue-light)); }}
+  .stat-num {{ font-size:2.2rem; font-weight:800; color:var(--blue-light); letter-spacing:-1px; }}
+  .stat-label {{ font-size:12px; color:var(--text2); margin-top:4px; font-weight:500; text-transform:uppercase; letter-spacing:0.5px; }}
+  .stat-icon {{ position:absolute; right:1rem; top:50%; transform:translateY(-50%); font-size:1.8rem; opacity:0.15; }}
+
+  /* ACTIVITY BAR */
+  .activity-bar {{ background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:0.9rem 1.2rem; margin-bottom:2rem; display:flex; align-items:center; gap:10px; font-size:13px; }}
+  .activity-bar .label {{ color:var(--text2); }}
+  .activity-bar .url {{ color:var(--blue-light); font-family:monospace; font-size:12px; }}
+  .activity-bar .refresh {{ margin-left:auto; color:var(--text3); font-size:12px; }}
+
+  /* SECTION */
+  .section-header {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; }}
+  .section-title {{ font-size:13px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.8px; }}
+  .section-count {{ font-size:12px; color:var(--text3); background:var(--surface2); border:1px solid var(--border); padding:2px 10px; border-radius:20px; }}
+
+  /* REVIEW CARDS */
+  .review-card {{ background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:14px; overflow:hidden; transition:border-color 0.2s; }}
+  .review-card:hover {{ border-color:var(--border2); }}
+  .review-header {{ padding:0.9rem 1.2rem; background:var(--surface2); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }}
+  .review-meta {{ display:flex; align-items:center; gap:8px; font-size:13px; }}
+  .repo-icon {{ font-size:14px; }}
+  .repo-name {{ color:var(--blue-light); text-decoration:none; font-weight:600; }}
+  .repo-name:hover {{ text-decoration:underline; }}
+  .divider {{ color:var(--text3); }}
+  .pr-link {{ color:var(--text2); text-decoration:none; background:var(--border); padding:2px 8px; border-radius:20px; font-size:12px; font-weight:500; }}
+  .pr-link:hover {{ color:var(--text); }}
+  .review-time {{ font-size:12px; color:var(--text3); }}
+  .review-body {{ padding:1.2rem; font-size:13px; line-height:1.8; color:#c8c8e0; max-height:280px; overflow-y:auto; border-bottom:1px solid var(--border); }}
+  .review-body::-webkit-scrollbar {{ width:4px; }}
+  .review-body::-webkit-scrollbar-track {{ background:transparent; }}
+  .review-body::-webkit-scrollbar-thumb {{ background:var(--border2); border-radius:2px; }}
+  .review-footer {{ padding:0.7rem 1.2rem; display:flex; align-items:center; justify-content:space-between; }}
+  .ai-badge {{ font-size:11px; color:var(--text3); }}
+  .view-pr {{ font-size:12px; color:var(--blue-light); text-decoration:none; font-weight:500; }}
+  .view-pr:hover {{ text-decoration:underline; }}
+
+  /* EMPTY */
+  .empty-state {{ text-align:center; padding:4rem 2rem; background:var(--surface); border:1px dashed var(--border2); border-radius:12px; }}
+  .empty-icon {{ font-size:2.5rem; margin-bottom:1rem; }}
+  .empty-state h3 {{ font-size:1rem; color:var(--text2); margin-bottom:8px; font-weight:600; }}
+  .empty-state p {{ font-size:13px; color:var(--text3); }}
+
+  /* FOOTER */
+  footer {{ text-align:center; padding:2.5rem 1rem 1.5rem; font-size:12px; color:var(--text3); border-top:1px solid var(--border); margin-top:3rem; }}
+  footer a {{ color:var(--text2); text-decoration:none; }}
+  footer a:hover {{ color:var(--text); }}
+
+  @media(max-width:600px) {{
+    .stats {{ grid-template-columns:1fr; }}
+    nav {{ padding:0 1rem; }}
+    .page {{ padding:1rem; }}
+  }}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">🤖</span>
+  <span class="nav-title">Code Review Buddy</span>
+  <span class="nav-version">v1.0</span>
+  <div class="nav-status">
+    <div class="pulse"></div>
+    Online
+  </div>
+</nav>
+
+<div class="page">
+  <div class="hero">
+    <h2>AI-Powered Code Reviews</h2>
+    <p>Automatically reviews every Pull Request and posts structured feedback directly on GitHub.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-num">{total}</div>
+      <div class="stat-label">Reviews Posted</div>
+      <div class="stat-icon">📝</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{repos}</div>
+      <div class="stat-label">Repos Active</div>
+      <div class="stat-icon">📁</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{prs}</div>
+      <div class="stat-label">PRs Reviewed</div>
+      <div class="stat-icon">🔀</div>
+    </div>
+  </div>
+
+  <div class="activity-bar">
+    <div class="pulse" style="background:#6366f1;animation:none;opacity:0.7;"></div>
+    <span class="label">Webhook endpoint:</span>
+    <span class="url">/webhook</span>
+    <span class="refresh">↻ Auto-refreshes every 30s</span>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">Recent Reviews</span>
+    <span class="section-count">{total} total</span>
+  </div>
+
+  {cards}
+</div>
+
+<footer>
+  Built with FastAPI + Gemini AI ·
+  <a href="https://github.com/nikkipandey-8599/code-review-buddy" target="_blank">View Source</a> ·
+  <a href="https://github.com/apps/code-review-buddy-nikki" target="_blank">Install Bot</a>
+</footer>
+
+</body>
+</html>""" 
+
     return html
 
 

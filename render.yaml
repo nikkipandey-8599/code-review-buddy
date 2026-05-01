@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: code-review-buddy
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_PRIVATE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
